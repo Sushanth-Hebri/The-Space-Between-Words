@@ -1,6 +1,6 @@
-## The-Space-Between-Words
+# The-Space-Between-Words
 
-# Concept:
+## Concept:
 Most days feel small, but they quietly become our life.
 This project explores how emotion, time, and experience reveal what truly remains.
 
