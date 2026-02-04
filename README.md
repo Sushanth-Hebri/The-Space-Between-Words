@@ -1,6 +1,6 @@
 # The-Space-Between-Words
 
-## Concept: [Experience this craft](https://sushanth-hebri.github.io/The-Space-Between-Words/)
+## Concept: [Experience this craft - visit page](https://sushanth-hebri.github.io/The-Space-Between-Words/)
 
 Most days feel small, but they quietly become our life.
 This project explores how emotion, time, and experience reveal what truly remains.
