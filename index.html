@@ -1274,8 +1274,14 @@
             playheadBandHeight: 26,
             timeOffsetSeconds: 0.0,
             lanePadding: 16,
-            glowStrength: 18
+            glowStrength: 18,
+            heartEverySeconds: 10,
+            heartDurationSeconds: 0.9,
+            heartChance: 0.4
         };
+
+        let lastHeartTrigger = 0;
+        let heartActiveUntil = 0;
 
         function resizeNotesCanvas() {
             notesCanvas.width = Math.floor(window.innerWidth / 2);
@@ -1305,6 +1311,25 @@
             return Math.max(0, audioTime * midiTimeScale + visualConfig.leadInSeconds);
         }
 
+        function maybeTriggerHeart(nowSeconds) {
+            if (nowSeconds - lastHeartTrigger < visualConfig.heartEverySeconds) {
+                return;
+            }
+            lastHeartTrigger = nowSeconds;
+            if (Math.random() <= visualConfig.heartChance) {
+                heartActiveUntil = nowSeconds + visualConfig.heartDurationSeconds;
+            }
+        }
+
+        function drawSmallHeart(ctx, cx, cy, size) {
+            ctx.beginPath();
+            ctx.moveTo(cx, cy + size * 0.4);
+            ctx.bezierCurveTo(cx + size, cy - size * 0.2, cx + size * 0.7, cy - size, cx, cy - size * 0.5);
+            ctx.bezierCurveTo(cx - size * 0.7, cy - size, cx - size, cy - size * 0.2, cx, cy + size * 0.4);
+            ctx.closePath();
+            ctx.fill();
+        }
+
         function drawNotes() {
             notesAnimationId = null;
             if (!notesReady) {
@@ -1317,8 +1342,12 @@
             const centerY = height / 2;
             const pixelsPerSecond = height / visualConfig.secondsPerScreen;
             const currentTime = getCurrentMidiTime();
+            const nowSeconds = audioPlayer.currentTime;
 
             notesCtx.clearRect(0, 0, width, height);
+
+            maybeTriggerHeart(nowSeconds);
+            const heartActive = nowSeconds <= heartActiveUntil;
 
             const activeIndex = getActiveNoteIndex(currentTime);
 
@@ -1343,12 +1372,21 @@
                 if (i === activeIndex) {
                     notesCtx.fillStyle = '#000000';
                     notesCtx.shadowBlur = 0;
+                    notesCtx.fillRect(drawX, drawY, noteWidth, noteHeight);
+
+                    if (heartActive) {
+                        const cx = drawX + noteWidth / 2;
+                        const cy = drawY + noteHeight / 2;
+                        const size = Math.min(noteWidth, noteHeight) * 0.45;
+                        notesCtx.fillStyle = '#ffffff';
+                        drawSmallHeart(notesCtx, cx, cy, size);
+                        notesCtx.fillStyle = '#000000';
+                    }
                 } else {
                     const alpha = Math.min(0.6, visualConfig.noteOpacity + velocityBoost * 0.18);
                     notesCtx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+                    notesCtx.fillRect(drawX, drawY, noteWidth, noteHeight);
                 }
-
-                notesCtx.fillRect(drawX, drawY, noteWidth, noteHeight);
             }
 
             notesCtx.shadowBlur = 0;
