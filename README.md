@@ -7,7 +7,7 @@ This project explores how emotion, time, and experience reveal what truly remain
 
 A minimalist interactive web experience that gradually reveals LOVE hidden inside ordinary life moments using synchronized music, typography, and animation.
 
-![Project Preview](https://github.com/Sushanth-Hebri/The-Space-Between-Words/blob/main/Screenshot%202026-02-05%20023124.png)
+![Project Preview](https://github.com/Sushanth-Hebri/The-Space-Between-Words/blob/main/Screenshot%202026-02-08%20202417.png)
 
 
 
