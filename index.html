@@ -36,13 +36,24 @@
         }
         
         /* Canvas background for particles */
-        canvas {
+        .particle-canvas {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             z-index: 0;
+        }
+
+        /* MIDI notes visualization canvas */
+        .notes-canvas {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            width: 50%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
         }
         
         /* Audio Permission Popup */
@@ -332,7 +343,7 @@
         
         .content {
             position: relative;
-            z-index: 2;
+            z-index: 3;
             max-width: 85%;
             animation: slideInFromLeft 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
@@ -889,6 +900,9 @@
         <div class="blob blob2"></div>
         <div class="blob blob3"></div>
     </div>
+
+    <!-- MIDI Notes Canvas -->
+    <canvas id="notesCanvas" class="notes-canvas"></canvas>
    
 
     <!-- Main Content -->
@@ -915,6 +929,7 @@
         <div class="clock" id="clock">Today</div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
     <script>
         // ============ Interactive Character Tooltips ============
         
@@ -1175,6 +1190,7 @@
         
         // Create animated particle background
         const canvas = document.createElement('canvas');
+        canvas.className = 'particle-canvas';
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
         document.body.insertBefore(canvas, document.body.firstChild);
@@ -1234,6 +1250,184 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
         });
+
+        // ============ MIDI Notes Visualization ============
+        const notesCanvas = document.getElementById('notesCanvas');
+        const notesCtx = notesCanvas.getContext('2d');
+        const midiUrl = 'riverflowsmid.mid';
+
+        let midiNotes = [];
+        let notesReady = false;
+        let midiMin = 0;
+        let midiMax = 127;
+        let notesAnimationId = null;
+        let midiDuration = 0;
+        let audioDuration = 0;
+        let midiTimeScale = 1;
+
+        const visualConfig = {
+            secondsPerScreen: 6,
+            noteWidth: 14,
+            minNoteHeight: 8,
+            noteOpacity: 0.22,
+            leadInSeconds: 0.0,
+            playheadBandHeight: 26,
+            timeOffsetSeconds: 0.0,
+            lanePadding: 16,
+            glowStrength: 18
+        };
+
+        function resizeNotesCanvas() {
+            notesCanvas.width = Math.floor(window.innerWidth / 2);
+            notesCanvas.height = window.innerHeight;
+        }
+
+        resizeNotesCanvas();
+
+        function getActiveNoteIndex(currentTime) {
+            let closestIndex = -1;
+            let closestDelta = Infinity;
+            for (let i = 0; i < midiNotes.length; i++) {
+                const note = midiNotes[i];
+                const noteStart = note.time;
+                const noteMid = noteStart + note.duration / 2;
+                const delta = Math.abs(noteMid - currentTime);
+                if (delta < closestDelta) {
+                    closestDelta = delta;
+                    closestIndex = i;
+                }
+            }
+            return closestIndex;
+        }
+
+        function getCurrentMidiTime() {
+            const audioTime = audioPlayer.currentTime + visualConfig.timeOffsetSeconds;
+            return Math.max(0, audioTime * midiTimeScale + visualConfig.leadInSeconds);
+        }
+
+        function drawNotes() {
+            notesAnimationId = null;
+            if (!notesReady) {
+                notesAnimationId = requestAnimationFrame(drawNotes);
+                return;
+            }
+
+            const width = notesCanvas.width;
+            const height = notesCanvas.height;
+            const centerY = height / 2;
+            const pixelsPerSecond = height / visualConfig.secondsPerScreen;
+            const currentTime = getCurrentMidiTime();
+
+            notesCtx.clearRect(0, 0, width, height);
+
+            const activeIndex = getActiveNoteIndex(currentTime);
+
+            for (let i = 0; i < midiNotes.length; i++) {
+                const note = midiNotes[i];
+                const noteMid = note.time + note.duration / 2;
+                const relativeTime = noteMid - currentTime;
+                const y = centerY + relativeTime * pixelsPerSecond;
+
+                if (y < -40 || y > height + 40) {
+                    continue;
+                }
+
+                const velocityBoost = Math.max(0.6, note.velocity || 0.7);
+                const noteWidth = visualConfig.noteWidth * (0.9 + velocityBoost * 0.6);
+                const noteHeight = Math.max(visualConfig.minNoteHeight, note.duration * pixelsPerSecond * 0.6) * (0.7 + velocityBoost * 0.6);
+                const midiRange = Math.max(1, midiMax - midiMin);
+                const x = ((note.midi - midiMin) / midiRange) * (width - visualConfig.lanePadding * 2);
+                const drawX = visualConfig.lanePadding + Math.min(width - noteWidth - visualConfig.lanePadding, Math.max(0, x));
+                const drawY = y - noteHeight / 2;
+
+                if (i === activeIndex) {
+                    notesCtx.fillStyle = '#000000';
+                    notesCtx.shadowBlur = 0;
+                } else {
+                    const alpha = Math.min(0.6, visualConfig.noteOpacity + velocityBoost * 0.18);
+                    notesCtx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+                }
+
+                notesCtx.fillRect(drawX, drawY, noteWidth, noteHeight);
+            }
+
+            notesCtx.shadowBlur = 0;
+
+            if (!audioPlayer.paused) {
+                notesAnimationId = requestAnimationFrame(drawNotes);
+            }
+        }
+
+        function updateMidiSync() {
+            if (midiDuration > 0 && audioDuration > 0) {
+                midiTimeScale = midiDuration / audioDuration;
+            } else {
+                midiTimeScale = 1;
+            }
+        }
+
+        async function loadMidiNotes() {
+            try {
+                const response = await fetch(midiUrl);
+                const arrayBuffer = await response.arrayBuffer();
+                const midi = new Midi(arrayBuffer);
+
+                midiNotes = [];
+                midi.tracks.forEach(track => {
+                    track.notes.forEach(note => {
+                        midiNotes.push({
+                            time: note.time,
+                            duration: note.duration,
+                            midi: note.midi,
+                            velocity: note.velocity
+                        });
+                    });
+                });
+
+                midiNotes.sort((a, b) => a.time - b.time);
+                midiMin = midiNotes.reduce((min, note) => Math.min(min, note.midi), 127);
+                midiMax = midiNotes.reduce((max, note) => Math.max(max, note.midi), 0);
+                midiDuration = midiNotes.reduce((max, note) => Math.max(max, note.time + note.duration), 0);
+                updateMidiSync();
+                notesReady = true;
+            } catch (err) {
+                console.error('Failed to load MIDI:', err);
+            }
+        }
+
+        window.addEventListener('resize', resizeNotesCanvas);
+
+        // Load MIDI and start visualization
+        loadMidiNotes();
+        drawNotes();
+
+        function startNotesAnimation() {
+            if (notesAnimationId === null && !audioPlayer.paused) {
+                notesAnimationId = requestAnimationFrame(drawNotes);
+            }
+        }
+
+        function stopNotesAnimation() {
+            if (notesAnimationId !== null) {
+                cancelAnimationFrame(notesAnimationId);
+                notesAnimationId = null;
+            }
+            drawNotes();
+        }
+
+        audioPlayer.addEventListener('loadedmetadata', () => {
+            audioDuration = audioPlayer.duration || 0;
+            updateMidiSync();
+        });
+        audioPlayer.addEventListener('play', startNotesAnimation);
+        audioPlayer.addEventListener('pause', stopNotesAnimation);
+        audioPlayer.addEventListener('ended', stopNotesAnimation);
+        audioPlayer.addEventListener('seeked', () => {
+            if (audioPlayer.paused) {
+                drawNotes();
+            }
+        });
+        // ============ End MIDI Notes Visualization ============
      
     </script>
 </body>
